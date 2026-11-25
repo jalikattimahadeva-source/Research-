@@ -1,0 +1,57 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Research Navigator</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f6fb;color:#1c2333}
+header{background:#1d3a8a;color:#fff;padding:14px 20px}header small{opacity:.8}
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:10px 20px;background:#fff;border-bottom:1px solid #dde}
+nav button{border:0;background:#e8ecf8;padding:8px 12px;border-radius:8px;cursor:pointer}nav button.on{background:#1d3a8a;color:#fff}
+main{max-width:900px;margin:18px auto;padding:0 16px}section{display:none}section.on{display:block}
+input,select,textarea,button.go{padding:8px;margin:4px 4px 4px 0;border:1px solid #bbc;border-radius:6px;font:inherit}
+textarea{width:100%;height:120px}button.go{background:#1d3a8a;color:#fff;cursor:pointer}
+.card{background:#fff;border-radius:10px;padding:12px;margin:8px 0;box-shadow:0 1px 3px #0001}.tag{background:#e8ecf8;border-radius:5px;padding:1px 6px;font-size:12px}
+.warn{background:#fff7e0;border-left:4px solid #e0a800;padding:8px;margin:8px 0}
+</style></head><body>
+<header><b>Research Navigator</b><br><small>AI-assisted research guidance · BGMIT Mudhol, Dept. of AI &amp; ML</small></header>
+<nav id="nav"></nav><main>
+<section id="topics"><h3>1. Topic Finder</h3>
+<input id="branch" placeholder="Branch (e.g. CSE/AIML)"><input id="interest" placeholder="Interest (e.g. NLP summarisation)">
+<select id="level"><option>beginner</option><option>intermediate</option><option>advanced</option></select>
+<button class="go" onclick="topics()">Suggest</button><div id="topicsOut"></div></section>
+<section id="papers"><h3>2. Paper Finder</h3><input id="q" placeholder="Keywords"><input id="year" type="number" placeholder="From year">
+<button class="go" onclick="papers()">Search</button><div id="papersOut"></div>
+<p>Selected for gap analysis &amp; roadmap: <b id="selCount">0</b></p></section>
+<section id="understand"><h3>3. Paper Understanding</h3><textarea id="txt" placeholder="Paste an abstract or paper text"></textarea>
+<button class="go" onclick="understand()">Analyse</button><div id="understandOut"></div></section>
+<section id="gaps"><h3>4. Research Gap Assistant</h3><p>Uses papers selected in Paper Finder.</p>
+<button class="go" onclick="gaps()">Find gaps</button><div id="gapsOut"></div></section>
+<section id="opps"><h3>5. Opportunity &amp; Guide Hub</h3><div id="oppsOut"></div></section>
+<section id="ethics"><h3>6. Ethics &amp; Resources</h3><div id="ethicsOut"></div></section>
+<section id="roadmap"><h3>Final Roadmap</h3><input id="rtopic" placeholder="Chosen topic"><button class="go" onclick="roadmap()">Generate</button><div id="roadmapOut"></div></section>
+</main><script>
+const tabs={topics:"Topic Finder",papers:"Paper Finder",understand:"Paper Understanding",gaps:"Gap Assistant",opps:"Opportunities",ethics:"Ethics",roadmap:"Roadmap"};
+const sel=new Set(),$=i=>document.getElementById(i),esc=s=>String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const post=(u,b)=>fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>r.json());
+function show(t){document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id==t));
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t==t));
+ if(t=="opps")opps();if(t=="ethics")ethics();}
+$("nav").innerHTML=Object.entries(tabs).map(([k,v])=>`<button data-t="${k}" onclick="show('${k}')">${v}</button>`).join("");
+async function topics(){const r=await post("/api/topics",{branch:$("branch").value,interest:$("interest").value,level:$("level").value});
+ $("topicsOut").innerHTML=r.map(t=>`<div class="card"><b>${esc(t.title)}</b> <span class="tag">${t.level}${t.fits_level?" ✓ your level":""}</span><br>Keywords: ${esc(t.keywords)}<br>Skills: ${esc(t.skills)}</div>`).join("")||"No match, try other words."}
+async function papers(){const r=await fetch(`/api/papers?q=${encodeURIComponent($("q").value)}&year=${$("year").value}`).then(r=>r.json());
+ $("papersOut").innerHTML=r.map(p=>`<div class="card"><label><input type="checkbox" ${sel.has(p.id)?"checked":""} onchange="tog(${p.id})"> <b>${esc(p.title)}</b></label>
+ <span class="tag">${p.year}</span> <span class="tag">${esc(p.kind)}</span><br>${esc(p.authors)} · ${esc(p.method)}<br><a href="${esc(p.url)}" target="_blank">Source</a></div>`).join("")||"No papers found."}
+function tog(i){sel.has(i)?sel.delete(i):sel.add(i);$("selCount").textContent=sel.size}
+async function understand(){const r=await post("/api/understand",{text:$("txt").value});
+ $("understandOut").innerHTML=`<div class="card"><b>Summary:</b> ${esc(r.summary)}</div>`+["problem","method","dataset","results","metrics","limitations"].map(k=>`<div class="card"><b>${k}</b><br>${r[k].map(esc).join("<br>")||"<i>not found</i>"}</div>`).join("")}
+async function gaps(){const r=await post("/api/gaps",{ids:[...sel]});
+ $("gapsOut").innerHTML=`<div class="warn">${esc(r.note)}</div><div class="card"><b>Repeated limitations</b><br>${r.repeated.map(g=>esc(g.theme)+" <i>("+g.papers.length+" papers)</i>").join("<br>")||"None found; select more papers."}</div>
+ <div class="card"><b>Under-explored combinations</b><br>${r.unexplored.map(esc).join("<br>")||"-"}</div><div class="card"><b>All limitations</b><br>${r.limitations.map(l=>esc(l.text)).join("<br>")}</div>`}
+async function opps(){const r=await fetch("/api/opportunities").then(r=>r.json());
+ $("oppsOut").innerHTML=r.map(o=>`<div class="card"><b>${esc(o.name)}</b> <span class="tag">${o.kind}</span> ${o.verified?"✅ verified":"⚠ verify on official site"}<br>Eligibility: ${esc(o.eligibility)}<br>Deadline: ${esc(o.deadline)}<br>Support: ${esc(o.support)}<br><a href="${esc(o.url)}" target="_blank">Official URL</a></div>`).join("")}
+async function ethics(){const r=await fetch("/api/ethics").then(r=>r.json());
+ $("ethicsOut").innerHTML=`<div class="card"><b>Do</b><ul>${r.do.map(x=>"<li>"+esc(x)+"</li>").join("")}</ul><b>Don't</b><ul>${r.dont.map(x=>"<li>"+esc(x)+"</li>").join("")}</ul></div>`+r.resources.map(x=>`<div class="card"><a href="${x.url}" target="_blank">${esc(x.name)}</a></div>`).join("")}
+async function roadmap(){const r=await post("/api/roadmap",{topic:$("rtopic").value,ids:[...sel]});
+ $("roadmapOut").innerHTML=`<div class="card"><b>${esc(r.topic)}</b><br>${r.steps.map(esc).join("<br>")}</div><div class="card"><b>Sources</b><br>${r.sources.map(s=>`<a href="${s.url}" target="_blank">${esc(s.title)} (${s.year})</a>`).join("<br>")||"Select papers first."}</div>
+ <div class="card"><b>Human validation</b><br>${r.validation.map(v=>"☐ "+esc(v)).join("<br>")}</div>`}
+show("topics");
+</script></body></html>
